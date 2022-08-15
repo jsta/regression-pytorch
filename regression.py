@@ -1,6 +1,8 @@
 # https://github.com/christianversloot/machine-learning-articles/blob/main/how-to-create-a-neural-network-for-regression-with-pytorch.md
 
 import warnings
+import pandas as pd
+import seaborn as sns
 from torchviz import make_dot
 
 import torch
@@ -32,16 +34,12 @@ class MLP(nn.Module):
         return self.layers(x)
 
 
-losses = []
-
 torch.manual_seed(42)
 
 X, y = load_boston(return_X_y=True)
-
 trainloader = DataLoader(
     dataset=components.BostonDataset(X, y), batch_size=10, shuffle=True, num_workers=1
 )
-
 mlp = MLP()
 
 # Plot model architecture
@@ -51,10 +49,11 @@ make_dot(yhat, params=dict(list(mlp.named_parameters()))).render(
     "torchviz", format="png"
 )
 
-loss_function = nn.L1Loss()
+loss_function = nn.LLoss()
 optimizer = torch.optim.Adam(mlp.parameters(), lr=1e-4)
 
-for epoch in range(0, 5):
+# --- train
+for epoch in range(0, 20):
     print(f"Starting epoch {epoch+1}")
     
     current_loss = 0.0
@@ -73,13 +72,20 @@ for epoch in range(0, 5):
         loss.backward()
 
         # Perform optimization
-        optimizer.step()
+        optimizer.step()        
         
-        losses.append(loss.item())
         current_loss += loss.item()
         if i % 10 == 0:
             print("Loss after mini-batch %5d: %.3f" % (i + 1, current_loss / 500))
             current_loss = 0.0
 
 print("Training process has finished.")
-print(losses)
+
+# --- predict
+scaler = torch.load("scaler.pkl")
+X_scale = scaler.transform(X)
+y_pred = [float(mlp(torch.FloatTensor(X_scale[i]))) for i in range(0, X_scale.shape[0])]
+y_pred = pd.DataFrame({"y": y, "y_pred": y_pred}, index=range(0, len(y)))
+
+sns.lmplot(x="y", y="y_pred", data=y_pred)
+# plt.show()

@@ -11,7 +11,9 @@ class BostonDataset(torch.utils.data.Dataset):
         if not torch.is_tensor(X) and not torch.is_tensor(y):
             # Apply scaling if necessary
             if scale_data:
-                X = StandardScaler().fit_transform(X)
+                scaler = StandardScaler()
+                X = scaler.fit_transform(X)
+                torch.save(scaler, "scaler.pkl")
             self.X = torch.FloatTensor(X)
             self.y = torch.from_numpy(y)
 
