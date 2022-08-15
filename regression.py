@@ -1,30 +1,17 @@
 # https://github.com/christianversloot/machine-learning-articles/blob/main/how-to-create-a-neural-network-for-regression-with-pytorch.md
 
+import warnings
+from torchviz import make_dot
+
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
+
 from sklearn.datasets import load_boston
-from sklearn.preprocessing import StandardScaler
 
+import components
 
-class BostonDataset(torch.utils.data.Dataset):
-    """
-    Prepare the Boston dataset for regression
-    """
-
-    def __init__(self, X, y, scale_data=True):
-        if not torch.is_tensor(X) and not torch.is_tensor(y):
-            # Apply scaling if necessary
-            if scale_data:
-                X = StandardScaler().fit_transform(X)
-            self.X = torch.from_numpy(X)
-            self.y = torch.from_numpy(y)
-
-    def __len__(self):
-        return len(self.X)
-
-    def __getitem__(self, i):
-        return self.X[i], self.y[i]
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 
 class MLP(nn.Module):
@@ -45,64 +32,54 @@ class MLP(nn.Module):
         return self.layers(x)
 
 
-if __name__ == "__main__":
+losses = []
 
-    # Set fixed random number seed
-    torch.manual_seed(42)
+torch.manual_seed(42)
 
-    # Load Boston dataset
-    X, y = load_boston(return_X_y=True)
+X, y = load_boston(return_X_y=True)
 
-    # Prepare Boston dataset
-    dataset = BostonDataset(X, y)
-    trainloader = torch.utils.data.DataLoader(
-        dataset, batch_size=10, shuffle=True, num_workers=1
-    )
+trainloader = DataLoader(
+    dataset=components.BostonDataset(X, y), batch_size=10, shuffle=True, num_workers=1
+)
 
-    # Initialize the MLP
-    mlp = MLP()
+mlp = MLP()
 
-    # Define the loss function and optimizer
-    loss_function = nn.L1Loss()
-    optimizer = torch.optim.Adam(mlp.parameters(), lr=1e-4)
+# Plot model architecture
+batch = next(iter(trainloader))
+yhat = mlp(batch[0])
+make_dot(yhat, params=dict(list(mlp.named_parameters()))).render(
+    "torchviz", format="png"
+)
 
-    # Run the training loop
-    for epoch in range(0, 5):  # 5 epochs at maximum
+loss_function = nn.L1Loss()
+optimizer = torch.optim.Adam(mlp.parameters(), lr=1e-4)
 
-        # Print epoch
-        print(f"Starting epoch {epoch+1}")
+for epoch in range(0, 5):
+    print(f"Starting epoch {epoch+1}")
+    
+    current_loss = 0.0
 
-        # Set current loss value
-        current_loss = 0.0
+    for i, data in enumerate(trainloader, 0):
+        inputs, targets = data
+        inputs, targets = inputs.float(), targets.float()
+        targets = targets.reshape((targets.shape[0], 1))
+    
+        optimizer.zero_grad()
 
-        # Iterate over the DataLoader for training data
-        for i, data in enumerate(trainloader, 0):
+        # Perform forward pass
+        outputs = mlp(inputs)
+        
+        loss = loss_function(outputs, targets)        
+        loss.backward()
 
-            # Get and prepare inputs
-            inputs, targets = data
-            inputs, targets = inputs.float(), targets.float()
-            targets = targets.reshape((targets.shape[0], 1))
+        # Perform optimization
+        optimizer.step()
+        
+        losses.append(loss.item())
+        current_loss += loss.item()
+        if i % 10 == 0:
+            print("Loss after mini-batch %5d: %.3f" % (i + 1, current_loss / 500))
+            current_loss = 0.0
 
-            # Zero the gradients
-            optimizer.zero_grad()
-
-            # Perform forward pass
-            outputs = mlp(inputs)
-
-            # Compute loss
-            loss = loss_function(outputs, targets)
-
-            # Perform backward pass
-            loss.backward()
-
-            # Perform optimization
-            optimizer.step()
-
-            # Print statistics
-            current_loss += loss.item()
-            if i % 10 == 0:
-                print("Loss after mini-batch %5d: %.3f" % (i + 1, current_loss / 500))
-                current_loss = 0.0
-
-    # Process is complete.
-    print("Training process has finished.")
+print("Training process has finished.")
+print(losses)
